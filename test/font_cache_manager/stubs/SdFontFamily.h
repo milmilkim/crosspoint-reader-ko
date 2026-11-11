@@ -23,8 +23,11 @@ class UnifiedFontFamily {
   const EpdFontData* getFlashData(EpdFontStyle style = EpdFontFamily::REGULAR) const {
     return type == Type::FLASH && flashFont ? flashFont->getData(style) : nullptr;
   }
+  void setGlyphFallback(const UnifiedFontFamily* fallback) { glyphFallback = fallback; }
+  const UnifiedFontFamily* getGlyphFallback() const { return glyphFallback; }
 
  private:
+  const UnifiedFontFamily* glyphFallback = nullptr;
   Type type;
   const EpdFontFamily* flashFont = nullptr;
   std::unique_ptr<SdFontFamily> sdFont;

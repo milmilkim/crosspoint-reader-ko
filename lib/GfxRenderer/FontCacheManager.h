@@ -67,6 +67,7 @@ class FontCacheManager {
   static constexpr uint8_t SCAN_GROUP_COUNT = MAX_SCAN_FONTS * 4;
 
   uint8_t resolveScanStyle(int fontId, EpdFontFamily::Style style) const;
+  void prewarmFallbacks(const UnifiedFontFamily& font, const char* utf8Text, uint8_t styleMask);
   int scanFontIds_[MAX_SCAN_FONTS] = {};
   uint32_t scanCodepoints_[MAX_SCAN_CODEPOINTS + 1] = {};
   uint16_t scanGroupCounts_[SCAN_GROUP_COUNT] = {};

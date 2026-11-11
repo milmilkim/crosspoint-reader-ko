@@ -13,6 +13,7 @@ bool reloadCustomReaderFont();
 // Call this when the system-font setting changes to apply immediately without reboot.
 // Returns true if a system font is now active.
 bool reloadSystemFont();
+bool reloadReaderFallbackFont();
 
 // Get reference to global renderer (for font operations from other modules)
 GfxRenderer& getGlobalRenderer();

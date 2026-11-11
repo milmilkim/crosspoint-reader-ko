@@ -2254,7 +2254,15 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     // Image pages use one base refresh before the grayscale pass. FAST leaves
     // the panel receptive to the gray waveform; pending cleanup still honors
     // the scheduled/manual HALF refresh.
-    renderer.displayBuffer(cleanImageBasePending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
+    const auto baseMode = cleanImageBasePending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH;
+    if (gpio.deviceIsX3()) {
+      // X3's overlay gray nudge only moves pixels settled by the "AA-pre-BW(mid)"
+      // base (see Uc8253X3Driver::displayGrayscaleBase); a plain refresh sets them
+      // too firmly and image grays come out dark and blotchy.
+      renderer.displayGrayscaleBase(baseMode);
+    } else {
+      renderer.displayBuffer(baseMode);
+    }
     pagesUntilFullRefresh = 1;
   } else if (combinedGrayscaleBase) {
     // Stash the base without activating; displayGrayBuffer() below commits

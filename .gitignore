@@ -38,3 +38,7 @@ sdkconfig.x4pro
 # Local debug screenshots pulled off the device
 screens-temp/
 flake.*
+
+# my-theme: the built-in Bookk Myungjo reader font is generated locally from a TTF whose
+# redistribution terms are unverified; never commit it to this public fork.
+lib/EpdFont/builtinFonts/bookk_*.h

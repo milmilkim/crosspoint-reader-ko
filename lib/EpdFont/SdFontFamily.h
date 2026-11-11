@@ -82,6 +82,22 @@ class UnifiedFontFamily {
   // real glyph for a codepoint, lookups delegate to this fallback. Used to let the UI
   // font (Hangul/Latin only) render Hanja/Kana from a user-selected SD "system font".
   const UnifiedFontFamily* glyphFallback = nullptr;
+  // Fallback glyph scale in 1/16 units (16 = as is). Set by setGlyphFallback when the
+  // fallback is a clearly bigger face than the primary (Bookk 17pt behind the 11pt UI
+  // font): its glyphs are measured and drawn at this fraction so borrowed Hanja match
+  // the UI size instead of towering over the Hangul.
+  uint8_t fallbackScale16 = 16;
+  // Scratch for the scaled metrics getGlyph() hands out. Round-robin, so a caller that
+  // holds one glyph while looking up the next (or the loop task measuring while the
+  // render task draws) does not see its slot overwritten.
+  mutable EpdGlyph scaledGlyphs[4] = {};
+  mutable uint8_t scaledSlot = 0;
+
+  // First family down the fallback chain (the fallback, its own fallback, ...) that has a
+  // real glyph for cp, or nullptr.
+  const UnifiedFontFamily* fallbackOwner(uint32_t cp, EpdFontStyle style) const;
+  // 1/16 scale at which `other`'s glyphs match this family's size (16 = as they are).
+  uint8_t scaleAgainst(const UnifiedFontFamily* other) const;
 
   // Own (non-fallback) lookups — operate strictly on this family's own glyphs.
   bool hasOwnGlyph(uint32_t cp, EpdFontStyle style) const;
@@ -108,14 +124,23 @@ class UnifiedFontFamily {
   bool isSdFont() const { return type == Type::SD; }
 
   // Glyph-level fallback wiring. The pointer is non-owning and must outlive this family.
-  void setGlyphFallback(const UnifiedFontFamily* fallback) { glyphFallback = fallback; }
+  void setGlyphFallback(const UnifiedFontFamily* fallback);
   const UnifiedFontFamily* getGlyphFallback() const { return glyphFallback; }
+  // 16 when the glyphs of `resolved` (as returned by familyForGlyph) are used as they are,
+  // else the 1/16 scale they are measured and drawn at.
+  uint8_t fallbackScaleFor(const UnifiedFontFamily* resolved) const {
+    if (resolved == this || !glyphFallback) return 16;
+    // The direct fallback's scale is cached; a family further down the chain is rare.
+    return resolved == glyphFallback ? fallbackScale16 : scaleAgainst(resolved);
+  }
+  // Metrics of `src` at scale16/16: bitmap box rounded up, bearings and advance rounded.
+  // dataLength/dataOffset are copied, but the bitmap must still be fetched with `src`.
+  static void scaleGlyph(const EpdGlyph& src, uint8_t scale16, EpdGlyph& dst);
 
-  // Resolve which family actually owns the glyph for cp (primary, else fallback).
+  // Resolve which family actually owns the glyph for cp (primary, else down the fallback chain).
   // Sets *outGlyph to the resolved glyph (may be the primary's replacement glyph, or
-  // nullptr for SD-only families with no match). The returned family is never recursive
-  // (it is a plain primary/fallback family), so the renderer can query its type/metrics
-  // directly. Used by the text renderer for correct per-glyph bitmap + ascender + is2Bit.
+  // nullptr for SD-only families with no match). The returned family owns the glyph
+  // itself, so the renderer can query its type/metrics directly. Used by the text renderer for correct per-glyph bitmap + ascender + is2Bit.
   const UnifiedFontFamily* familyForGlyph(uint32_t cp, EpdFontStyle style, const EpdGlyph** outGlyph) const;
   // familyForGlyph() for drawing: a solid block symbol (U+2588, U+25A0) neither family has comes
   // back as &solidFallback (no bitmap; fill a rectangle), with the primary as its family.
@@ -129,12 +154,18 @@ class UnifiedFontFamily {
   // getGlyph() plus the solid-symbol fallback of familyForGlyphMetrics().
   const EpdGlyph* getGlyphMetrics(uint32_t cp, EpdGlyph& solidFallback, EpdFontStyle style = REGULAR) const {
     const EpdGlyph* glyph = nullptr;
-    familyForGlyphMetrics(cp, style, solidFallback, &glyph);
-    return glyph;
+    const UnifiedFontFamily* owner = familyForGlyphMetrics(cp, style, solidFallback, &glyph);
+    // A shrunk fallback glyph is measured at the size it is drawn (see setGlyphFallback).
+    const uint8_t scale16 = fallbackScaleFor(owner);
+    if (!glyph || scale16 == 16) return glyph;
+    EpdGlyph& slot = scaledGlyphs[scaledSlot];
+    scaledSlot = (scaledSlot + 1) & 3;
+    scaleGlyph(*glyph, scale16, slot);
+    return &slot;
   }
   // True when this family or its glyph fallback has a real glyph for cp.
   bool hasCodepoint(uint32_t cp, EpdFontStyle style = REGULAR) const {
-    return hasOwnGlyph(cp, style) || (glyphFallback && glyphFallback->hasOwnGlyph(cp, style));
+    return hasOwnGlyph(cp, style) || fallbackOwner(cp, style) != nullptr;
   }
 
   // For SD fonts: get bitmap data (for flash fonts, use getData()->bitmap[offset])

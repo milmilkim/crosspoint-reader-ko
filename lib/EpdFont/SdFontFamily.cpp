@@ -183,7 +183,11 @@ UnifiedFontFamily::~UnifiedFontFamily() {
 }
 
 UnifiedFontFamily::UnifiedFontFamily(UnifiedFontFamily&& other) noexcept
-    : type(other.type), flashFont(other.flashFont), sdFont(other.sdFont), glyphFallback(other.glyphFallback) {
+    : type(other.type),
+      flashFont(other.flashFont),
+      sdFont(other.sdFont),
+      glyphFallback(other.glyphFallback),
+      fallbackScale16(other.fallbackScale16) {
   other.flashFont = nullptr;
   other.sdFont = nullptr;
   other.glyphFallback = nullptr;
@@ -198,12 +202,40 @@ UnifiedFontFamily& UnifiedFontFamily::operator=(UnifiedFontFamily&& other) noexc
     flashFont = other.flashFont;
     sdFont = other.sdFont;
     glyphFallback = other.glyphFallback;
+    fallbackScale16 = other.fallbackScale16;
 
     other.flashFont = nullptr;
     other.sdFont = nullptr;
     other.glyphFallback = nullptr;
   }
   return *this;
+}
+
+void UnifiedFontFamily::setGlyphFallback(const UnifiedFontFamily* fallback) {
+  glyphFallback = fallback;
+  fallbackScale16 = scaleAgainst(fallback);
+}
+
+uint8_t UnifiedFontFamily::scaleAgainst(const UnifiedFontFamily* other) const {
+  if (!other || other == this) return 16;
+  const int own = getAdvanceY(REGULAR);
+  const int theirs = other->getAdvanceY(REGULAR);
+  if (own <= 0 || theirs <= 0) return 16;
+  const int scale16 = (own * 16 + theirs / 2) / theirs;
+  // Only a clearly bigger face is shrunk (Bookk 17pt behind Pretendard 11pt: 27/35 -> 12).
+  // Near-equal faces, such as the reader font and its SD fallback, keep their own pixels.
+  return scale16 <= 13 ? static_cast<uint8_t>(std::max(scale16, 4)) : 16;
+}
+
+void UnifiedFontFamily::scaleGlyph(const EpdGlyph& src, const uint8_t scale16, EpdGlyph& dst) {
+  const auto roundScaled = [scale16](const int v) { return (v * scale16 + (v >= 0 ? 8 : -8)) / 16; };
+  dst.width = static_cast<uint8_t>((src.width * scale16 + 15) / 16);
+  dst.height = static_cast<uint8_t>((src.height * scale16 + 15) / 16);
+  dst.advanceX = static_cast<uint16_t>((src.advanceX * scale16 + 8) / 16);  // 12.4 fixed-point scales directly
+  dst.left = static_cast<int16_t>(roundScaled(src.left));
+  dst.top = static_cast<int16_t>(roundScaled(src.top));
+  dst.dataLength = src.dataLength;
+  dst.dataOffset = src.dataOffset;
 }
 
 void UnifiedFontFamily::getTextDimensions(const char* string, int* w, int* h, EpdFontStyle style) const {
@@ -244,7 +276,12 @@ void UnifiedFontFamily::getTextDimensions(const char* string, int* w, int* h, Ep
     }
 
     const EpdGlyph* glyph = nullptr;
-    familyForGlyph(cp, style, &glyph);
+    const UnifiedFontFamily* owner = familyForGlyph(cp, style, &glyph);
+    EpdGlyph scaled;
+    if (const uint8_t scale16 = fallbackScaleFor(owner); glyph && scale16 != 16) {
+      scaleGlyph(*glyph, scale16, scaled);
+      glyph = &scaled;
+    }
     if (!glyph) {
       if (!isCombining) {
         lastBaseX += fp4::toPixel(prevAdvanceFP);  // flush pending advance before resetting
@@ -303,7 +340,7 @@ bool UnifiedFontFamily::hasPrintableChars(const char* string, EpdFontStyle style
     const uint8_t* p = reinterpret_cast<const uint8_t*>(string);
     uint32_t cp;
     while ((cp = utf8NextCodepoint(&p))) {
-      if (glyphFallback->hasOwnGlyph(cp, style)) {
+      if (fallbackOwner(cp, style)) {
         return true;
       }
     }
@@ -329,6 +366,17 @@ const EpdGlyph* UnifiedFontFamily::getOwnGlyph(uint32_t cp, EpdFontStyle style) 
   return nullptr;
 }
 
+const UnifiedFontFamily* UnifiedFontFamily::fallbackOwner(uint32_t cp, EpdFontStyle style) const {
+  // Walk the chain (the reader font's symbol font may itself fall back to an SD font).
+  // The depth cap also makes a mis-wired cycle harmless.
+  const UnifiedFontFamily* family = glyphFallback;
+  for (int depth = 0; family && family != this && depth < 4; depth++) {
+    if (family->hasOwnGlyph(cp, style)) return family;
+    family = family->glyphFallback;
+  }
+  return nullptr;
+}
+
 const UnifiedFontFamily* UnifiedFontFamily::familyForGlyph(uint32_t cp, EpdFontStyle style,
                                                            const EpdGlyph** outGlyph) const {
   // Fast path (the common case, incl. the reader body font): no fallback configured, so a
@@ -341,9 +389,9 @@ const UnifiedFontFamily* UnifiedFontFamily::familyForGlyph(uint32_t cp, EpdFontS
     *outGlyph = getOwnGlyph(cp, style);
     return this;
   }
-  if (glyphFallback->hasOwnGlyph(cp, style)) {
-    *outGlyph = glyphFallback->getOwnGlyph(cp, style);
-    return glyphFallback;
+  if (const UnifiedFontFamily* owner = fallbackOwner(cp, style)) {
+    *outGlyph = owner->getOwnGlyph(cp, style);
+    return owner;
   }
   // Neither has it: fall back to the primary's own lookup (flash replacement glyph
   // or nullptr for SD), preserving the pre-fallback rendering behavior.
@@ -370,8 +418,14 @@ const EpdGlyph* UnifiedFontFamily::getGlyph(uint32_t cp, EpdFontStyle style) con
   if (hasOwnGlyph(cp, style)) {
     return getOwnGlyph(cp, style);
   }
-  if (glyphFallback->hasOwnGlyph(cp, style)) {
-    return glyphFallback->getOwnGlyph(cp, style);
+  if (const UnifiedFontFamily* owner = fallbackOwner(cp, style)) {
+    const EpdGlyph* glyph = owner->getOwnGlyph(cp, style);
+    const uint8_t scale16 = fallbackScaleFor(owner);
+    if (!glyph || scale16 == 16) return glyph;
+    EpdGlyph& slot = scaledGlyphs[scaledSlot];
+    scaledSlot = (scaledSlot + 1) & 3;
+    scaleGlyph(*glyph, scale16, slot);
+    return &slot;
   }
   return getOwnGlyph(cp, style);
 }

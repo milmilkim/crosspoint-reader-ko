@@ -12,9 +12,10 @@
 class FontSelectionActivity final : public UiListActivity {
  public:
   // Which font slot this picker configures:
-  //   Reader  -> SETTINGS.customFontPath (EPUB body font; default Pretendard 10pt)
-  //   System  -> SETTINGS.systemFontPath (UI glyph fallback; default Pretendard)
-  enum class Target { Reader, System };
+  //   Reader         -> SETTINGS.customFontPath (EPUB body font; default the built-in Bookk Myungjo)
+  //   System         -> SETTINGS.systemFontPath (UI glyph fallback; default Pretendard)
+  //   ReaderFallback -> SETTINGS.readerFallbackFontPath (glyphs the built-in reader font lacks)
+  enum class Target { Reader, System, ReaderFallback };
 
   explicit FontSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, Target target = Target::Reader)
       : UiListActivity("FontSelection", renderer, mappedInput), target_(target) {}
@@ -34,6 +35,10 @@ class FontSelectionActivity final : public UiListActivity {
   std::vector<freeink::ui::ListItem> rowItems;
 
   bool isSystemTarget() const { return target_ == Target::System; }
+  bool isFallbackTarget() const { return target_ == Target::ReaderFallback; }
+  // Settings field this picker writes, and whether a font is currently chosen for it.
+  char* targetPath() const;
+  size_t targetPathSize() const;
 
   // Index of the font currently saved for this slot (0 = built-in default).
   int currentFontIndex() const;

@@ -52,6 +52,7 @@ void FontCacheManager::prewarmCache(int fontId, const char* utf8Text, uint8_t st
   if (it == fontMap_.end() || !it->second) return;
 
   const auto& unifiedFont = *it->second;
+  prewarmFallbacks(unifiedFont, utf8Text, styleMask);
   // Prewarming only applies to compressed flash fonts; SD fonts have no decompressor-managed cache.
   if (unifiedFont.isSdFont()) return;
 
@@ -63,6 +64,26 @@ void FontCacheManager::prewarmCache(int fontId, const char* utf8Text, uint8_t st
     int missed = fontDecompressor_->prewarmCache(data, utf8Text);
     if (missed > 0) {
       LOG_DBG("FCM", "prewarmCache: %d glyph(s) not cached for style %d", missed, i);
+    }
+  }
+}
+
+// Compressed flash fonts down the glyph-fallback chain (the reader font's symbol font) hold
+// the characters the primary lacks: inflate their groups once here too, or every such glyph
+// would go through the one-group hot slot, once per render pass.
+void FontCacheManager::prewarmFallbacks(const UnifiedFontFamily& font, const char* utf8Text, const uint8_t styleMask) {
+  const UnifiedFontFamily* fallback = font.getGlyphFallback();
+  for (int depth = 0; fallback && fallback != &font && depth < 4; depth++, fallback = fallback->getGlyphFallback()) {
+    if (fallback->isSdFont()) continue;
+    const EpdFontData* done[4] = {};
+    for (uint8_t i = 0; i < 4; i++) {
+      if (!(styleMask & (1 << i))) continue;
+      const EpdFontData* data = fallback->getFlashData(static_cast<EpdFontFamily::Style>(i));
+      if (!data || !data->groups) continue;
+      // A regular-only family answers every style with the same data: one slot is enough.
+      if (std::find(std::begin(done), std::end(done), data) != std::end(done)) continue;
+      done[i] = data;
+      fontDecompressor_->prewarmCache(data, utf8Text);
     }
   }
 }

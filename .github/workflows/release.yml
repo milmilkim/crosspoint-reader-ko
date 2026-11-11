@@ -28,10 +28,12 @@ name: Compile Release
 #                                        built-in reader font from 1.6.5-ko.4 to 1.6.5-ko.11. Same
 #                                        install as above.
 
+# my-theme fork: NOT run on tag pushes. The built-in Bookk Myungjo reader fonts are generated
+# locally and git-ignored (lib/EpdFont/builtinFonts/bookk_*.h), so a CI build would ship
+# without them. Releases are built on the maintainer's machine and uploaded with
+# `gh release create`; this workflow stays for a manual, Bookk-less build.
 on:
-  push:
-    tags:
-    - '*'
+  workflow_dispatch:
 
 permissions:
   contents: read

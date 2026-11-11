@@ -29,11 +29,11 @@
 #include "util/BookProgress.h"
 
 int HomeActivity::getMenuItemCount() const {
-  int count = 4;  // File Browser, Library, File transfer, Settings
+  int count = 4;  // File Browser, Library, File transfer, Settings (tile home: its four tiles)
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
-  if (hasLibrarySlot()) {
+  if (hasLibrarySlot() && !tileHome) {
     count++;
   }
   return count;
@@ -277,8 +277,14 @@ void HomeActivity::onEnter() {
   }
 
   const auto base = static_cast<int>(recentBooks.size());
-  selectorIndex = initialMenuItem == HomeMenuItem::NONE ? (dosTheme ? base : 0)
-                                                        : base + menuItemToIndex(initialMenuItem, hasLibrarySlot());
+  tileHome = !coverGridUi && UITheme::hasTileHome();
+  if (tileHome) {
+    // The book card is not selectable: start on a tile.
+    selectorIndex = base + (initialMenuItem == HomeMenuItem::NONE ? 0 : tileMenuItemToIndex(initialMenuItem));
+  } else {
+    selectorIndex = initialMenuItem == HomeMenuItem::NONE ? (dosTheme ? base : 0)
+                                                          : base + menuItemToIndex(initialMenuItem, hasLibrarySlot());
+  }
 
   // Trigger first update
   requestUpdate();
@@ -286,6 +292,7 @@ void HomeActivity::onEnter() {
 
 void HomeActivity::onExit() {
   Activity::onExit();
+  recentPopup.dismiss();
 
   coverGridUi.reset();
 
@@ -330,6 +337,8 @@ void HomeActivity::freeCoverBuffer() {
 }
 
 void HomeActivity::loop() {
+  if (recentPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
+
   const int menuCount = getMenuItemCount();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
@@ -339,7 +348,7 @@ void HomeActivity::loop() {
       return;
     }
     const int menuIndex = selectorIndex - static_cast<int>(recentBooks.size());
-    switch (indexToMenuItem(menuIndex, hasLibrarySlot())) {
+    switch (tileHome ? tileIndexToMenuItem(menuIndex) : indexToMenuItem(menuIndex, hasLibrarySlot())) {
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
@@ -350,10 +359,22 @@ void HomeActivity::loop() {
         hasPlugins ? onPluginsOpen() : onOpdsBrowserOpen();
         break;
       case HomeMenuItem::FILE_TRANSFER:
-        onFileTransferOpen();
+        if (tileHome && hasLibrarySlot()) {
+          showTransferPopup();
+        } else {
+          onFileTransferOpen();
+        }
         break;
       case HomeMenuItem::SETTINGS_MENU:
         onSettingsOpen();
+        break;
+      case HomeMenuItem::CONTINUE_READING:
+        // Tile home's Read tile: the last book, or the file browser when there is none yet.
+        if (!recentBooks.empty()) {
+          onRecentBookSelected(recentBooks[0].path);
+        } else {
+          onFileBrowserOpen();
+        }
         break;
       default:
         break;
@@ -362,35 +383,40 @@ void HomeActivity::loop() {
 
   // Cover grid home splits navigation by button group (see below); the flat
   // next/previous cycle is for the classic list home only.
+  // Tile home cycles through the tiles only (the book card is not selectable).
+  const int firstSelectable = tileHome ? static_cast<int>(recentBooks.size()) : 0;
+  const auto stepSelection = [this, menuCount, firstSelectable](const bool forward) {
+    const int count = menuCount - firstSelectable;
+    const int index = selectorIndex - firstSelectable;
+    selectorIndex = firstSelectable + (forward ? ButtonNavigator::nextIndex(index, count)
+                                               : ButtonNavigator::previousIndex(index, count));
+    requestUpdate();
+  };
   if (!coverGridUi) {
-    buttonNavigator.onNext([this, menuCount] {
-      selectorIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
-      requestUpdate();
-    });
-
-    buttonNavigator.onPrevious([this, menuCount] {
-      selectorIndex = ButtonNavigator::previousIndex(selectorIndex, menuCount);
-      requestUpdate();
-    });
+    buttonNavigator.onNext([&stepSelection] { stepSelection(true); });
+    buttonNavigator.onPrevious([&stepSelection] { stepSelection(false); });
   }
 
   const auto swipe = mappedInput.wasSwipe();
   if (swipe == MappedInputManager::SwipeDir::Up) {
-    selectorIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
-    requestUpdate();
+    stepSelection(true);
     return;
   }
   if (swipe == MappedInputManager::SwipeDir::Down) {
-    selectorIndex = ButtonNavigator::previousIndex(selectorIndex, menuCount);
-    requestUpdate();
+    stepSelection(false);
     return;
   }
 
-  // Back is otherwise unused on the home menu: open the most recently read
-  // book directly (recentBooks is most-recent-first and already pruned of
+  // Back is otherwise unused on the home menu. Tile home: a popup of the recent
+  // books (the library is not on its tiles); other themes open the most recently
+  // read book directly (recentBooks is most-recent-first and already pruned of
   // files missing from the SD card).
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) && hasContinueReading && !recentBooks.empty()) {
-    onRecentBookSelected(recentBooks[0].path);
+    if (tileHome) {
+      showRecentPopup();
+    } else {
+      onRecentBookSelected(recentBooks[0].path);
+    }
     return;
   }
 
@@ -550,34 +576,6 @@ void HomeActivity::render(RenderLock&&) {
   }
   bool bufferRestored = coverRendered && coverBufferStored && restoreCoverBuffer();
 
-  // Band spans topPadding..homeTopPadding: the cover tile starts at the fixed
-  // homeTopPadding, so the height must shrink by topPadding or the band (and a
-  // centered title, e.g. RoundedRaff's book title) sinks into the tile.
-  // Home is the stack root: no back button in its header.
-  const Rect headerRect =
-      dosTheme ? dosLayout.header : Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding - metrics.topPadding};
-  GUI.drawHeader(renderer, headerRect,
-                 metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr,
-                 nullptr, false);
-
-  // Record the tile rect so storeCoverBuffer (called from the theme) knows
-  // which sub-region of the framebuffer to snapshot. ~16 KB in Portrait
-  // instead of the 48 KB full framebuffer the previous bind captured.
-  const Rect recentBooksRect =
-      dosTheme ? dosLayout.recent : Rect{content.x, metrics.homeTopPadding, content.width, metrics.homeCoverTileHeight};
-  coverRectX = recentBooksRect.x;
-  coverRectY = recentBooksRect.y;
-  coverRectW = recentBooksRect.width;
-  coverRectH = recentBooksRect.height;
-
-  if (dosTheme) {
-    GUI.drawHomeRecentBooks(renderer, recentBooksRect, recentBooks, selectorIndex, recentBookProgress.data(),
-                            recentBooks.size());
-  } else {
-    GUI.drawRecentBookCover(renderer, recentBooksRect, recentBooks, selectorIndex, coverRendered, coverBufferStored,
-                            bufferRestored, std::bind(&HomeActivity::storeCoverBuffer, this));
-  }
-
   // Build menu items dynamically
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_LIBRARY), tr(STR_FILE_TRANSFER),
                                         tr(STR_SETTINGS_TITLE)};
@@ -586,6 +584,12 @@ void HomeActivity::render(RenderLock&&) {
   if (hasLibrarySlot()) {
     menuItems.insert(menuItems.begin() + 2, hasPlugins ? tr(STR_PLUGINS) : tr(STR_OPDS_BROWSER));
     menuIcons.insert(menuIcons.begin() + 2, Plugins);
+  }
+
+  if (tileHome) {
+    // Stock tile order and wording; must match TILE_ORDER.
+    menuItems = {tr(STR_TILE_READ), tr(STR_TILE_FOLDER), tr(STR_SETTINGS_TITLE), tr(STR_FILE_TRANSFER)};
+    menuIcons = {Bookmark, Folder, Settings, Transfer};
   }
 
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
@@ -600,16 +604,63 @@ void HomeActivity::render(RenderLock&&) {
                       content.width,
                       pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
                                     metrics.homeMenuTopOffset + metrics.buttonHintsHeight)};
-  GUI.drawButtonMenu(
-      renderer, menuRect, static_cast<int>(menuItems.size()),
-      metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
-      [&menuItems](int index) { return std::string(menuItems[index]); },
-      [&menuIcons](int index) { return menuIcons[index]; });
+  const int menuSelected =
+      metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - static_cast<int>(recentBooks.size());
 
-  const auto labels = mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
-                                            tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  // Tile home: stock-style labels for the same actions (Back lists the recent books).
+  const char* backLabel = tileHome ? tr(STR_HINT_GO_BACK) : tr(STR_RESUME);
+  const char* prevLabel = tileHome ? tr(STR_HINT_TO_LEFT) : tr(STR_DIR_UP);
+  const char* nextLabel = tileHome ? tr(STR_HINT_TO_RIGHT) : tr(STR_DIR_DOWN);
+  const auto labels =
+      mappedInput.mapLabels(recentBooks.empty() ? "" : backLabel, tr(STR_SELECT), prevLabel, nextLabel);
 
+  const auto drawHome = [&](const bool withHints) {
+    // Band spans topPadding..homeTopPadding: the cover tile starts at the fixed
+    // homeTopPadding, so the height must shrink by topPadding or the band (and a
+    // centered title, e.g. RoundedRaff's book title) sinks into the tile.
+    // Home is the stack root: no back button in its header.
+    const Rect headerRect = dosTheme ? dosLayout.header
+                                     : Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding - metrics.topPadding};
+    GUI.drawHeader(renderer, headerRect,
+                   metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr,
+                   nullptr, false);
+
+    // Record the tile rect so storeCoverBuffer (called from the theme) knows
+    // which sub-region of the framebuffer to snapshot. ~16 KB in Portrait
+    // instead of the 48 KB full framebuffer the previous bind captured.
+    const Rect recentBooksRect = dosTheme ? dosLayout.recent
+                                          : Rect{content.x, metrics.homeTopPadding, content.width,
+                                                 metrics.homeCoverTileHeight};
+    coverRectX = recentBooksRect.x;
+    coverRectY = recentBooksRect.y;
+    coverRectW = recentBooksRect.width;
+    coverRectH = recentBooksRect.height;
+
+    if (dosTheme) {
+      GUI.drawHomeRecentBooks(renderer, recentBooksRect, recentBooks, selectorIndex, recentBookProgress.data(),
+                              recentBooks.size());
+    } else {
+      GUI.drawRecentBookCover(renderer, recentBooksRect, recentBooks, selectorIndex, coverRendered, coverBufferStored,
+                              bufferRestored, std::bind(&HomeActivity::storeCoverBuffer, this));
+    }
+
+    GUI.drawButtonMenu(
+        renderer, menuRect, static_cast<int>(menuItems.size()), menuSelected,
+        [&menuItems](int index) { return std::string(menuItems[index]); },
+        [&menuIcons](int index) { return menuIcons[index]; });
+
+    if (withHints) GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  };
+
+  drawHome(!recentPopup.isActive());
+  if (recentPopup.isActive()) {
+    // The popup paints its own hints and displays the buffer over the home just drawn.
+    recentPopup.processRender(renderer, mappedInput);
+    return;
+  }
+
+  // 1-bit only: a grayscale anti-aliasing pass (tile corners, icons) was tried and made
+  // every home paint far too slow on the X3 (three waveforms plus a full redraw).
   const auto refreshMode =
       cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH;
   renderer.displayBuffer(refreshMode);
@@ -626,6 +677,45 @@ void HomeActivity::render(RenderLock&&) {
       loadRecentCovers(themeThumbHeight > 0 ? themeThumbHeight : metrics.homeCoverHeight);
     }
   }
+}
+
+void HomeActivity::showRecentPopup() {
+  std::vector<std::string> titles;
+  recentPopupPaths.clear();
+  for (const auto& book : RECENT_BOOKS.getBooks()) {
+    if (RecentBooksStore::isMissing(book)) continue;
+    titles.push_back(book.title.empty() ? book.path : book.title);
+    recentPopupPaths.push_back(book.path);
+  }
+  if (titles.empty()) return;
+  recentPopup.show(StrId::STR_MENU_RECENT_BOOKS, titles, 0, [this](const int idx) {
+    if (idx >= 0 && idx < static_cast<int>(recentPopupPaths.size())) onRecentBookSelected(recentPopupPaths[idx]);
+  });
+  requestUpdate();
+}
+
+void HomeActivity::showTransferPopup() {
+  // The library slot (Plugins, else OPDS) has no tile of its own; it shares the File
+  // transfer tile. A single OPDS server shows under its own name (e.g. the user's
+  // library); several go through the server list behind the generic OPDS entry.
+  const auto& servers = OPDS_STORE.getServers();
+  std::string libraryLabel;
+  if (hasPlugins) {
+    libraryLabel = tr(STR_PLUGINS);
+  } else if (servers.size() == 1 && !servers[0].name.empty()) {
+    libraryLabel = servers[0].name;
+  } else {
+    libraryLabel = tr(STR_OPDS_BROWSER);
+  }
+  std::vector<std::string> options = {libraryLabel, tr(STR_FILE_TRANSFER)};
+  recentPopup.show(StrId::STR_FILE_TRANSFER, options, 0, [this](const int idx) {
+    if (idx == 0) {
+      hasPlugins ? onPluginsOpen() : onOpdsBrowserOpen();
+    } else if (idx == 1) {
+      onFileTransferOpen();
+    }
+  });
+  requestUpdate();
 }
 
 void HomeActivity::onRecentBookSelected(const std::string& path) { activityManager.goToReader(path); }

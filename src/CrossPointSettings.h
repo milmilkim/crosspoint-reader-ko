@@ -209,7 +209,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LYRA_3_COVERS = ui_theme_options::LYRA_3_COVERS,
     ROUNDEDRAFF = ui_theme_options::ROUNDEDRAFF,
     COVER_GRID = ui_theme_options::COVER_GRID,
-    DOS = ui_theme_options::DOS
+    DOS = ui_theme_options::DOS,
+    TILE = ui_theme_options::TILE
   };
 
   // Image rendering in EPUB reader. IMAGES_DISPLAY_BW lays images out like
@@ -361,7 +362,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Defaults to Disabled so shortcut-based bookmark toggling remains opt-in.
   uint8_t longPressMenuFunction = LP_MENU_DISABLED;
   // UI Theme
-  uint8_t uiTheme = LYRA;
+  uint8_t uiTheme = TILE;  // my-theme: stock-style tile home
   // Sunlight fading compensation
   uint8_t fadingFix = 0;
   // Power button return from footnotes (1 = enabled, 0 = disabled)
@@ -373,6 +374,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // UI "system font" path loaded from SD card (empty means Pretendard only).
   // Used as a glyph-level fallback for the UI font so titles/menus can show Hanja/Kana.
   char systemFontPath[64] = "";
+  // my-theme: SD font that only supplies glyphs the built-in reader font lacks (see main.cpp).
+  char readerFallbackFontPath[64] = "";
   // Character-level line wrapping for Korean text (breaks at any character, not just spaces)
   uint8_t characterWrap = 1;
   // Focus Reading - emphasizes the first part of words with bold (English-only in KO build)
@@ -450,6 +453,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
 
   // Check if a UI system font is set
   bool hasSystemFont() const { return systemFontPath[0] != '\0'; }
+  bool hasReaderFallbackFont() const { return readerFallbackFontPath[0] != '\0'; }
+  const char* getReaderFallbackFontName() const;
   // Get system font name (extracted from path); returns the default label when unset
   const char* getSystemFontName() const;
 

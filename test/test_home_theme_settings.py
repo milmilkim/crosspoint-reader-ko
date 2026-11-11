@@ -13,17 +13,17 @@ HARNESS = r"""
 int main() {
   using namespace ui_theme_options;
   assert(CLASSIC == 0 && LYRA == 1 && LYRA_3_COVERS == 2 && ROUNDEDRAFF == 3);
-  assert(COVER_GRID == 4 && DOS == 5);
+  assert(COVER_GRID == 4 && DOS == 5 && TILE == 6);
 
-  const uint8_t psramOptions[] = {CLASSIC, LYRA, LYRA_3_COVERS, ROUNDEDRAFF, COVER_GRID, DOS};
-  assert(optionCount(true) == 6);
+  const uint8_t psramOptions[] = {CLASSIC, LYRA, LYRA_3_COVERS, ROUNDEDRAFF, COVER_GRID, DOS, TILE};
+  assert(optionCount(true) == 7);
   for (uint8_t option = 0; option < optionCount(true); ++option) {
     assert(themeForOption(option, true) == psramOptions[option]);
     assert(optionForTheme(psramOptions[option], true) == option);
   }
 
-  const uint8_t noPsramOptions[] = {CLASSIC, LYRA, LYRA_3_COVERS, ROUNDEDRAFF, DOS};
-  assert(optionCount(false) == 5);
+  const uint8_t noPsramOptions[] = {CLASSIC, LYRA, LYRA_3_COVERS, ROUNDEDRAFF, DOS, TILE};
+  assert(optionCount(false) == 6);
   for (uint8_t option = 0; option < optionCount(false); ++option) {
     assert(themeForOption(option, false) == noPsramOptions[option]);
     assert(optionForTheme(noPsramOptions[option], false) == option);
@@ -33,6 +33,7 @@ int main() {
   assert(!isAvailableTheme(COVER_GRID, false));
   assert(isAvailableTheme(COVER_GRID, true));
   assert(isAvailableTheme(DOS, false) && isAvailableTheme(DOS, true));
+  assert(isAvailableTheme(TILE, false) && isAvailableTheme(TILE, true));
   assert(optionForTheme(255, true) == LYRA);
 }
 """

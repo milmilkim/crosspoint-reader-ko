@@ -7,12 +7,18 @@
 #include "RecentBooksStore.h"
 #include "activities/Activity.h"
 #include "components/CoverGridHomeUi.h"
+#include "components/OptionPopup.h"
 #include "util/ButtonNavigator.h"
 
 struct Rect;
 
 class HomeActivity final : public Activity {
   std::unique_ptr<CoverGridHomeUi> coverGridUi;
+  // Tile home: Back lists the recent books in a popup (stock-style) instead of
+  // opening the last one outright; the paths back the popup's title rows. The
+  // File transfer tile reuses it to choose between the library slot and file transfer.
+  OptionPopup recentPopup;
+  std::vector<std::string> recentPopupPaths;
   ButtonNavigator buttonNavigator;
   int selectorIndex = 0;
   std::array<int, RecentBooksStore::MAX_RECENT_BOOKS> recentBookProgress{};
@@ -65,6 +71,28 @@ class HomeActivity final : public Activity {
     if (idx == i) return HomeMenuItem::SETTINGS_MENU;
     return HomeMenuItem::NONE;
   }
+
+  // Tile theme home: the stock firmware's 2x2 tile order (Read, Folder, Settings,
+  // File transfer). Only these tiles are selectable; the book card is not. Read
+  // and Back both open the last book; the library screen is not on the tile
+  // home. The library slot (Plugins/OPDS) has no tile of its own: when present,
+  // File transfer asks whether to open it or start the transfer server.
+  bool tileHome = false;
+  static constexpr HomeMenuItem TILE_ORDER[] = {HomeMenuItem::CONTINUE_READING, HomeMenuItem::FILE_BROWSER,
+                                                HomeMenuItem::SETTINGS_MENU, HomeMenuItem::FILE_TRANSFER};
+  static constexpr int TILE_COUNT = sizeof(TILE_ORDER) / sizeof(TILE_ORDER[0]);
+  static HomeMenuItem tileIndexToMenuItem(int idx) {
+    return idx >= 0 && idx < TILE_COUNT ? TILE_ORDER[idx] : HomeMenuItem::NONE;
+  }
+  static int tileMenuItemToIndex(HomeMenuItem item) {
+    if (item == HomeMenuItem::OPDS_BROWSER) item = HomeMenuItem::FILE_TRANSFER;  // reached from that tile
+    for (int i = 0; i < TILE_COUNT; i++) {
+      if (TILE_ORDER[i] == item) return i;
+    }
+    return 0;
+  }
+  void showRecentPopup();
+  void showTransferPopup();
   void onRecentBookSelected(const std::string& path);
   void onFileBrowserOpen();
   void onLibraryOpen();

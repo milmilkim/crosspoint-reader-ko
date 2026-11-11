@@ -18,6 +18,7 @@
 #include "components/themes/lyra/Lyra3CoversTheme.h"
 #include "components/themes/lyra/LyraTheme.h"
 #include "components/themes/roundedraff/RoundedRaffTheme.h"
+#include "components/themes/tile/TileTheme.h"
 
 UITheme UITheme::instance;
 
@@ -35,6 +36,8 @@ void UITheme::reload() {
 bool UITheme::supportsCoverGrid() { return HalMemory::getPsramHeap().totalBytes > 0; }
 
 bool UITheme::hasCoverGridHome() { return SETTINGS.uiTheme == CrossPointSettings::COVER_GRID && supportsCoverGrid(); }
+
+bool UITheme::hasTileHome() { return SETTINGS.uiTheme == CrossPointSettings::TILE; }
 
 void UITheme::drawCoverGridHome(CoverGridHomeUi& home) { home.renderUi(); }
 
@@ -80,6 +83,11 @@ void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
       LOG_DBG("UI", "Using Lyra 3 Covers theme");
       currentTheme = std::make_unique<Lyra3CoversTheme>();
       currentMetrics = &Lyra3CoversMetrics::values;
+      break;
+    case CrossPointSettings::UI_THEME::TILE:
+      LOG_DBG("UI", "Using Tile theme");
+      currentTheme = std::make_unique<TileTheme>();
+      currentMetrics = &TileMetrics::values;
       break;
   }
   metricsValid = false;

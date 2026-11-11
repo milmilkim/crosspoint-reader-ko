@@ -17,7 +17,8 @@
 namespace fui = freeink::ui;
 
 namespace {
-constexpr const char* DEFAULT_FONT_NAME = "Pretendard (기본)";
+// my-theme: the built-in reader default (Bookk Myungjo; Pretendard when a build lacks it).
+constexpr const char* DEFAULT_FONT_NAME = HAS_BUILTIN_BOOKK ? "부크크명조 (기본)" : "Pretendard (기본)";
 constexpr const char* CACHE_DIR = "/.crosspoint/cache";
 
 // Index of `path` in `fontFiles`, or 0 (the built-in default entry) when it is not listed.
@@ -153,9 +154,9 @@ void FontSelectionActivity::loadFontList() {
   fontNames.clear();
 
   // First entry is always the default font (empty path means default).
-  // Reader default is Pretendard 10pt; UI system-font default is Pretendard.
+  // Reader default is the built-in reader font; UI system-font default is Pretendard.
   fontFiles.emplace_back("");
-  fontNames.emplace_back(isSystemTarget() ? "Pretendard (기본)" : DEFAULT_FONT_NAME);
+  fontNames.emplace_back(isSystemTarget() ? "Pretendard (기본)" : isFallbackTarget() ? "없음" : DEFAULT_FONT_NAME);
 
   // Ensure fonts directory exists
   Storage.mkdir("/.crosspoint");
@@ -171,10 +172,21 @@ void FontSelectionActivity::loadFontList() {
   LOG_DBG("FNT", "Total fonts found: %zu (including default)", fontFiles.size());
 }
 
+char* FontSelectionActivity::targetPath() const {
+  if (isSystemTarget()) return SETTINGS.systemFontPath;
+  if (isFallbackTarget()) return SETTINGS.readerFallbackFontPath;
+  return SETTINGS.customFontPath;
+}
+
+size_t FontSelectionActivity::targetPathSize() const {
+  if (isSystemTarget()) return sizeof(SETTINGS.systemFontPath);
+  if (isFallbackTarget()) return sizeof(SETTINGS.readerFallbackFontPath);
+  return sizeof(SETTINGS.customFontPath);
+}
+
 int FontSelectionActivity::currentFontIndex() const {
-  const bool hasCurrent = isSystemTarget() ? SETTINGS.hasSystemFont() : SETTINGS.hasCustomFont();
-  if (!hasCurrent) return 0;
-  return indexOfFont(fontFiles, isSystemTarget() ? SETTINGS.systemFontPath : SETTINGS.customFontPath);
+  if (targetPath()[0] == '\0') return 0;
+  return indexOfFont(fontFiles, targetPath());
 }
 
 void FontSelectionActivity::onEnter() {
@@ -194,7 +206,11 @@ void FontSelectionActivity::onEnter() {
   nav.selected = current;
 }
 
-const char* FontSelectionActivity::headerTitle() const { return isSystemTarget() ? tr(STR_SYSTEM_FONT) : tr(STR_FONT); }
+const char* FontSelectionActivity::headerTitle() const {
+  if (isSystemTarget()) return tr(STR_SYSTEM_FONT);
+  if (isFallbackTarget()) return tr(STR_READER_FALLBACK_FONT);
+  return tr(STR_FONT);
+}
 
 void FontSelectionActivity::activateIndex(const int index) {
   if (index < 0 || index >= static_cast<int>(fontFiles.size())) return;
@@ -209,8 +225,8 @@ void FontSelectionActivity::activateIndex(const int index) {
   renderer.displayBuffer();
 
   // Update the target font path in settings
-  char* destPath = isSystemTarget() ? SETTINGS.systemFontPath : SETTINGS.customFontPath;
-  const size_t destSize = isSystemTarget() ? sizeof(SETTINGS.systemFontPath) : sizeof(SETTINGS.customFontPath);
+  char* destPath = targetPath();
+  const size_t destSize = targetPathSize();
   if (index == 0) {
     // Default selected - clear the path
     destPath[0] = '\0';
@@ -220,12 +236,16 @@ void FontSelectionActivity::activateIndex(const int index) {
   }
 
   SETTINGS.saveToFile();
-  LOG_DBG("FNT", "Font selected (%s): %s", isSystemTarget() ? "system" : "reader", index == 0 ? "default" : destPath);
+  LOG_DBG("FNT", "Font selected (%s): %s", isSystemTarget() ? "system" : isFallbackTarget() ? "fallback" : "reader",
+          index == 0 ? "default" : destPath);
 
   if (isSystemTarget()) {
     // Reload UI system font dynamically (no reboot needed). UI-only, so reader caches
     // are unaffected and must NOT be invalidated.
     reloadSystemFont();
+  } else if (isFallbackTarget()) {
+    // Only glyphs the built-in font lacks change; page layout (widths) is unaffected.
+    reloadReaderFallbackFont();
   } else {
     // Reload custom reader font dynamically (no reboot needed)
     reloadCustomReaderFont();

@@ -105,8 +105,10 @@ void SettingsActivity::rebuildSettings() {
   // Language leads so a user stuck in an unfamiliar language finds it first.
   addAction(SettingsSection::General, StrId::STR_LANGUAGE, SettingAction::Language);
   addAction(SettingsSection::General, StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts);
-  // Korean: EPUB reader font picker (loads an SD font under CUSTOM_FONT_ID, else Pretendard 10pt).
+  // Korean: EPUB reader font picker (loads an SD font under CUSTOM_FONT_ID, else the built-in reader font).
   addAction(SettingsSection::Reader, StrId::STR_FONT_FAMILY, SettingAction::FontSelection);
+  // my-theme: optional SD font that only supplies glyphs the built-in reader font lacks.
+  addAction(SettingsSection::Reader, StrId::STR_READER_FALLBACK_FONT, SettingAction::ReaderFallbackFontSelection);
   // Korean: UI "system font" picker (loads an SD font as the primary UI font, Pretendard fallback).
   addAction(SettingsSection::Display, StrId::STR_SYSTEM_FONT, SettingAction::SystemFontSelection);
   if (BoardConfig::hasHomeKey()) {
@@ -375,6 +377,14 @@ void SettingsActivity::toggleSelectedSetting() {
               rebuildSettings();
             });
         break;
+      case SettingAction::ReaderFallbackFontSelection:
+        startActivityForResult(std::make_unique<FontSelectionActivity>(renderer, mappedInput,
+                                                                       FontSelectionActivity::Target::ReaderFallback),
+                               [this](const ActivityResult&) {
+                                 SETTINGS.saveToFile();
+                                 rebuildSettings();
+                               });
+        break;
       case SettingAction::TextSettings:
         // Upstream's TextSettingsActivity is not part of this build; reader text options live
         // in Settings > Reader (and Reader Options in the reader menu). Never added to a list.
@@ -480,6 +490,7 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
   // Korean: show the currently applied SD font next to the Reader/System font actions.
   if (setting.action == SettingAction::FontSelection) return SETTINGS.getCustomFontName();
   if (setting.action == SettingAction::SystemFontSelection) return SETTINGS.getSystemFontName();
+  if (setting.action == SettingAction::ReaderFallbackFontSelection) return SETTINGS.getReaderFallbackFontName();
   if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
     // Guard like the valueGetter branch below: a corrupt/migrated settings
     // byte must not index past the enum table.

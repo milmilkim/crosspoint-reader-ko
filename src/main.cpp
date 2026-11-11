@@ -69,10 +69,28 @@ constexpr unsigned long X4PRO_POWER_CLICK_MAX_HOLD_MS = 300;
 // while the button is held; swallow the one release that ends that wake gesture.
 static bool wakePowerReleasePending = false;
 
-// Pretendard 10pt - the one built-in font: default EPUB reader font and every UI size.
-// Regular only, synthetic bold applied by renderer.
-EpdFont pretendard10RegularFont(&pretendard_10_regular);
-EpdFontFamily readerFontFamily(10, &pretendard10RegularFont);
+// UI Font (Pretendard 11pt) - Regular only, synthetic bold applied by renderer
+EpdFont pretendard11RegularFont(&pretendard_11_regular);
+EpdFontFamily uiFontFamily(11, &pretendard11RegularFont);
+
+// Title font (Pretendard Bold 14pt) - Tile theme home book title
+EpdFont pretendard14BoldFont(&pretendard_14_bold);
+EpdFontFamily titleFontFamily(14, &pretendard14BoldFont);
+
+#if HAS_BUILTIN_BOOKK
+// Reader font (Bookk Myungjo 17pt, uncompressed) - the default; an SD reader font replaces it whole
+EpdFont bookk17Font(&bookk_17_regular);
+EpdFontFamily readerFontFamily(17, &bookk17Font);
+#endif
+
+#if HAS_BUILTIN_SYMBOLS
+// Symbols the reader font lacks (Bookk Myungjo 17pt, compressed) - its glyph fallback
+EpdFont bookk17SymbolsFont(&bookk_17_symbols);
+EpdFontFamily readerSymbolsFontFamily(17, &bookk17SymbolsFont);
+#endif
+
+// Last built-in font of the reader's glyph-fallback chain; the SD fallback font hangs off it.
+constexpr int READER_CHAIN_TAIL_FONT_ID = HAS_BUILTIN_SYMBOLS ? READER_SYMBOLS_FONT_ID : BUILTIN_READER_FONT_ID;
 
 // Korean fonts loading from SD card is disabled due to memory constraints
 // Font files should be in /.crosspoint/fonts/ directory
@@ -114,7 +132,7 @@ bool trySdFontLoad(GfxRenderer& renderer, int fontId, const char* name, const ch
 // Returns true if custom font was loaded successfully
 bool loadCustomReaderFont(GfxRenderer& gfxRenderer) {
   if (!SETTINGS.hasCustomFont()) {
-    LOG_DBG("FNT", "No custom font configured, using default Pretendard");
+    LOG_DBG("FNT", "No custom font configured, using the built-in reader font");
     return false;
   }
 
@@ -155,6 +173,46 @@ bool reloadCustomReaderFont() {
 
   // Load new custom font if configured
   return loadCustomReaderFont(renderer);
+}
+
+// Load the optional reader fallback font from SD and attach it to the end of the built-in
+// reader font chain: only glyphs the built-in fonts lack (rare Hangul syllables, rare Hanja,
+// Chinese) are drawn from it, so reading stays on the fast built-in path. Meaningless while
+// an SD reader font replaces the page font.
+bool loadReaderFallbackFont(GfxRenderer& gfxRenderer) {
+  if (!SETTINGS.hasReaderFallbackFont()) {
+    LOG_DBG("FNT", "No reader fallback font configured");
+    return false;
+  }
+  const char* fontPath = SETTINGS.readerFallbackFontPath;
+  if (!Storage.exists(fontPath)) {
+    LOG_ERR("FNT", "Reader fallback font not found: %s", fontPath);
+    SETTINGS.readerFallbackFontPath[0] = '\0';
+    SETTINGS.saveToFile();
+    return false;
+  }
+  if (!trySdFontLoad(gfxRenderer, READER_FALLBACK_FONT_ID, "ReaderFallbackFont", fontPath)) {
+    LOG_ERR("FNT", "Failed to load reader fallback font, clearing setting");
+    SETTINGS.readerFallbackFontPath[0] = '\0';
+    SETTINGS.saveToFile();
+    return false;
+  }
+  if (!gfxRenderer.hasFont(READER_CHAIN_TAIL_FONT_ID)) {
+    LOG_ERR("FNT", "No built-in reader font to attach the fallback to");
+    return false;
+  }
+  gfxRenderer.setGlyphFallback(READER_CHAIN_TAIL_FONT_ID, READER_FALLBACK_FONT_ID);
+  LOG_DBG("FNT", "Reader fallback font attached: %s", fontPath);
+  return true;
+}
+
+// Reload the reader fallback font after the setting changed (clearing it detaches the SD font).
+bool reloadReaderFallbackFont() {
+  renderer.clearGlyphFallback(READER_CHAIN_TAIL_FONT_ID);
+  if (renderer.hasFont(READER_FALLBACK_FONT_ID)) {
+    renderer.removeFont(READER_FALLBACK_FONT_ID);
+  }
+  return loadReaderFallbackFont(renderer);
 }
 
 // Load the UI system font from SD card (if configured) and make it the primary UI font,
@@ -655,14 +713,32 @@ void setupDisplayAndFonts(bool seamless = false) {
   fontCacheManager.setFontDecompressor(&fontDecompressor);
   renderer.setFontCacheManager(&fontCacheManager);
   // Korean build: upstream NotoSerif/NotoSans/Ubuntu built-ins are not loaded.
-  // Pretendard 10pt is both the default reader font and the UI font (all UI sizes).
-  renderer.insertFont(UI_FONT_ID, &readerFontFamily);
+  // Bookk Myungjo is the built-in reader font; Pretendard 11pt drives all UI sizes.
 
-  // Korean EPUB reader font (Pretendard 10pt) - always registered as the default
-  renderer.insertFont(READER_FONT_ID, &readerFontFamily);
+  // UI font (Pretendard 11pt) - used for all UI sizes in Korean version (UI_10/UI_12/SMALL alias it)
+  renderer.insertFont(UI_FONT_ID, &uiFontFamily);
+  renderer.insertFont(TITLE_FONT_ID, &titleFontFamily);
 
-  // Try to load custom reader font from SD card
+#if HAS_BUILTIN_BOOKK
+  // Built-in reader font. It also backs the UI font: Pretendard carries KS X 1001 Hangul and
+  // no Hanja, Bookk has every syllable and the KS X 1001 Hanja, so file names and titles
+  // render in full.
+  renderer.insertFont(BUILTIN_READER_FONT_ID, &readerFontFamily);
+  renderer.setGlyphFallback(UI_FONT_ID, BUILTIN_READER_FONT_ID);
+  // The home title (Pretendard Bold 14pt) has the same 35 px line height as Bookk 17pt,
+  // so Hanja in book titles borrow Bookk glyphs without breaking the card's rhythm.
+  renderer.setGlyphFallback(TITLE_FONT_ID, BUILTIN_READER_FONT_ID);
+#endif
+#if HAS_BUILTIN_SYMBOLS
+  // Greek, shapes, full-width punctuation, kana, ...: a compressed font behind the reader
+  // font (and so behind the UI and title fonts too), instead of an SD fallback font.
+  renderer.insertFont(READER_SYMBOLS_FONT_ID, &readerSymbolsFontFamily);
+  renderer.setGlyphFallback(BUILTIN_READER_FONT_ID, READER_SYMBOLS_FONT_ID);
+#endif
+
+  // Try to load custom reader font from SD card, then the optional fallback font
   loadCustomReaderFont(renderer);
+  loadReaderFallbackFont(renderer);
 
   // Set fallback font to Pretendard UI
   renderer.setFallbackFont(UI_FONT_ID);

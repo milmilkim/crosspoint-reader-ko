@@ -112,6 +112,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // Korean SD .epdfont selections — managed by FontSelectionActivity, not in SettingsList.
   doc["customFontPath"] = customFontPath;
   doc["systemFontPath"] = systemFontPath;
+  doc["readerFallbackFontPath"] = readerFallbackFontPath;
   // The displayed option list varies by board, so this setting uses a dynamic
   // display-index mapping and is skipped by the generic persistence loop.
   doc["longPressMenuFunction"] = longPressMenuFunction;
@@ -318,6 +319,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // Korean SD .epdfont selections — managed by FontSelectionActivity, not in SettingsList.
   copyToField(customFontPath, doc["customFontPath"] | "", sizeof(customFontPath));
   copyToField(systemFontPath, doc["systemFontPath"] | "", sizeof(systemFontPath));
+  copyToField(readerFallbackFontPath, doc["readerFallbackFontPath"] | "", sizeof(readerFallbackFontPath));
 
   // Language -- stored as code string for stability across enum reorders.
   if (doc["language"].is<const char*>()) {
@@ -424,7 +426,19 @@ int CrossPointSettings::getReaderFontId() const {
   // A custom SD font renders under the id it was registered with (CUSTOM_FONT_ID), which is also
   // the cache key, so switching fonts invalidates section caches. fontFamily/fontPointSize select
   // nothing here: upstream's built-in families are not loaded in this build.
-  return hasCustomFont() ? CUSTOM_FONT_ID : READER_FONT_ID;
+  // my-theme: the built-in reader font is Bookk Myungjo (the UI font when a build lacks it).
+  return hasCustomFont() ? CUSTOM_FONT_ID : BUILTIN_READER_FONT_ID;
+}
+
+const char* CrossPointSettings::getReaderFallbackFontName() const {
+  if (!hasReaderFallbackFont()) return "없음";
+  static char nameBuffer[64];
+  const char* lastSlash = strrchr(readerFallbackFontPath, '/');
+  const char* filename = lastSlash ? lastSlash + 1 : readerFallbackFontPath;
+  strncpy(nameBuffer, filename, sizeof(nameBuffer) - 1);
+  nameBuffer[sizeof(nameBuffer) - 1] = '\0';
+  if (char* dot = strrchr(nameBuffer, '.')) *dot = '\0';
+  return nameBuffer;
 }
 
 int CrossPointSettings::getUiFontId() const {
@@ -434,7 +448,7 @@ int CrossPointSettings::getUiFontId() const {
 
 const char* CrossPointSettings::getCustomFontName() const {
   if (!hasCustomFont()) {
-    return "Pretendard (기본)";
+    return HAS_BUILTIN_BOOKK ? "부크크명조 (기본)" : "Pretendard (기본)";
   }
   // Extract filename from path (e.g., "/.fonts/MyFont.epdfont" -> "MyFont")
   const char* lastSlash = strrchr(customFontPath, '/');

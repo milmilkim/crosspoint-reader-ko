@@ -21,9 +21,9 @@
 #include "FirmwareBoardTag.h"
 
 namespace {
-// Korean fork release URL
-constexpr char latestReleaseUrl[] =
-    "https://api.github.com/repos/crosspoint-reader-ko/crosspoint-reader-ko/releases/latest";
+// my-theme: this fork's own releases (X.Y.Z-ko.N-tile.M). Upstream's Korean releases would
+// replace the Tile theme and the built-in Bookk fonts with the stock build.
+constexpr char latestReleaseUrl[] = "https://api.github.com/repos/milmilkim/crosspoint-reader-ko/releases/latest";
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
@@ -147,9 +147,15 @@ bool OtaUpdater::isUpdateNewerKO() const {
     return false;
   }
 
-  // Parse version: major.minor.patch-ko.koVersion
-  auto parseVersion = [](const std::string& version, int& major, int& minor, int& patch, int& ko) {
-    major = minor = patch = ko = 0;
+  // Parse version: major.minor.patch-ko.koVersion[-tile.tileVersion]
+  auto parseVersion = [](const std::string& version, int& major, int& minor, int& patch, int& ko, int& tile) {
+    major = minor = patch = ko = tile = 0;
+
+    // my-theme: this fork's own counter on top of a Korean release
+    const size_t tilePos = version.find("-tile.");
+    if (tilePos != std::string::npos) {
+      tile = stoi(version.substr(tilePos + 6));
+    }
 
     // Find -ko. suffix
     size_t koPos = version.find("-ko.");
@@ -175,16 +181,17 @@ bool OtaUpdater::isUpdateNewerKO() const {
     }
   };
 
-  int updateMajor, updateMinor, updatePatch, updateKo;
-  int currentMajor, currentMinor, currentPatch, currentKo;
+  int updateMajor, updateMinor, updatePatch, updateKo, updateTile;
+  int currentMajor, currentMinor, currentPatch, currentKo, currentTile;
 
-  parseVersion(latestVersion, updateMajor, updateMinor, updatePatch, updateKo);
-  parseVersion(CROSSPOINT_VERSION, currentMajor, currentMinor, currentPatch, currentKo);
+  parseVersion(latestVersion, updateMajor, updateMinor, updatePatch, updateKo, updateTile);
+  parseVersion(CROSSPOINT_VERSION, currentMajor, currentMinor, currentPatch, currentKo, currentTile);
 
   if (updateMajor != currentMajor) return updateMajor > currentMajor;
   if (updateMinor != currentMinor) return updateMinor > currentMinor;
   if (updatePatch != currentPatch) return updatePatch > currentPatch;
-  return updateKo > currentKo;
+  if (updateKo != currentKo) return updateKo > currentKo;
+  return updateTile > currentTile;
 }
 
 namespace {

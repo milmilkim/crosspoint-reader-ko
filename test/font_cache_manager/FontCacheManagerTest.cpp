@@ -176,3 +176,26 @@ TEST(FontCacheManagerTest, ReleaseSdFontCachesClearsFlashAndSdGlyphCaches) {
   EXPECT_EQ(1, decompressor.clearCacheCalls);
   EXPECT_EQ(1, SdFontData::clearCacheCalls);
 }
+
+// my-theme: the built-in reader font is uncompressed, but the symbol font behind it (its glyph
+// fallback) is compressed, so a prewarm of the reader font must reach the fallback's data.
+TEST(FontCacheManagerTest, PrewarmCoversCompressedFlashFallbacksOncePerData) {
+  EpdFontData readerRegular{};
+  EpdFontData symbolsRegular{reinterpret_cast<const void*>(1)};
+  const EpdFontFamily readerFamily(&readerRegular, nullptr, nullptr, nullptr);
+  const EpdFontFamily symbolsFamily(&symbolsRegular, nullptr, nullptr, nullptr);
+  std::map<int, UnifiedFontSlot> fonts;
+  fonts.emplace(1, flashSlot(readerFamily));
+  fonts.emplace(2, flashSlot(symbolsFamily));
+  fonts.at(1)->setGlyphFallback(fonts.at(2).get());
+  FontDecompressor decompressor;
+  FontCacheManager manager(fonts);
+  manager.setFontDecompressor(&decompressor);
+
+  // Regular and bold both resolve to the symbol font's only style: one prewarm, not two.
+  manager.prewarmCache(1, "x", 0x03);
+
+  ASSERT_EQ(1, decompressor.prewarmCallCount);
+  EXPECT_EQ(&symbolsRegular, decompressor.prewarmCalls[0].fontData);
+  EXPECT_STREQ("x", decompressor.prewarmCalls[0].text);
+}

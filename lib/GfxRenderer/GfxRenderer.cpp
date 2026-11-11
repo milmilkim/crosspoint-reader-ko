@@ -10,6 +10,7 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <cstring>
 
 #include "../Memory/Memory.h"
 #include "FontCacheManager.h"
@@ -359,6 +360,46 @@ static void renderCharScaled(const GfxRenderer& renderer, GfxRenderer::RenderMod
   }
 }
 
+// Shrink a glyph bitmap to dstW x dstH (scale16/16 of the source) into a 2-bit scratch
+// buffer: each destination pixel is the rounded mean of the source pixels it covers, so
+// thin strokes keep their weight instead of dropping out. Rows are bit-contiguous like
+// every 2-bit glyph. The buffer is valid until the next call; nullptr if it would not fit.
+static const uint8_t* shrinkGlyphBitmap(const uint8_t* src, const EpdGlyph& source, const bool srcIs2Bit,
+                                        const uint8_t scale16, const int dstW, const int dstH) {
+  static uint8_t scratch[1024];  // 2 bpp: shrunk glyphs up to 64x64
+  const size_t needed = (static_cast<size_t>(dstW) * dstH * 2 + 7) / 8;
+  if (dstW <= 0 || dstH <= 0 || needed > sizeof(scratch)) return nullptr;
+  memset(scratch, 0, needed);
+  const int srcW = source.width;
+  const int srcH = source.height;
+  if (srcW <= 0 || srcH <= 0) return nullptr;
+  const auto sample = [&](const int x, const int y) -> int {
+    const int pos = y * srcW + x;
+    if (srcIs2Bit) return (src[pos >> 2] >> ((3 - (pos & 3)) * 2)) & 3;
+    return ((src[pos >> 3] >> (7 - (pos & 7))) & 1) ? 3 : 0;
+  };
+  int dstPos = 0;
+  for (int dy = 0; dy < dstH; dy++) {
+    const int sy0 = std::min(dy * 16 / scale16, srcH - 1);
+    const int sy1 = std::min(std::max((dy + 1) * 16 / scale16, sy0 + 1), srcH);
+    for (int dx = 0; dx < dstW; dx++, dstPos++) {
+      const int sx0 = std::min(dx * 16 / scale16, srcW - 1);
+      const int sx1 = std::min(std::max((dx + 1) * 16 / scale16, sx0 + 1), srcW);
+      int sum = 0;
+      int count = 0;
+      for (int y = sy0; y < sy1; y++) {
+        for (int x = sx0; x < sx1; x++) {
+          sum += sample(x, y);
+          count++;
+        }
+      }
+      const int value = (2 * sum + count) / (2 * count);
+      scratch[dstPos >> 2] |= static_cast<uint8_t>(value << ((3 - (dstPos & 3)) * 2));
+    }
+  }
+  return scratch;
+}
+
 template <TextRotation rotation = TextRotation::None>
 static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode renderMode,
                            const UnifiedFontFamily& fontFamily, const uint32_t cp, int cursorX, int cursorY,
@@ -375,12 +416,24 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     return;
   }
 
-  const bool is2Bit = resolved.is2Bit(style);
+  // A fallback face bigger than the primary is drawn at the primary's size: the metrics
+  // below are the scaled ones (what getGlyph() measured with), the bitmap is fetched with
+  // the source glyph and shrunk afterwards.
+  const EpdGlyph* const sourceGlyph = glyph;
+  const uint8_t scale16 = fontFamily.fallbackScaleFor(&resolved);
+  EpdGlyph scaledGlyph;
+  if (scale16 != 16) {
+    UnifiedFontFamily::scaleGlyph(*sourceGlyph, scale16, scaledGlyph);
+    glyph = &scaledGlyph;
+  }
+
+  bool is2Bit = resolved.is2Bit(style);
   const uint8_t width = glyph->width;
   const uint8_t height = glyph->height;
   const int left = glyph->left;
   const int top = glyph->top;
-  const uint8_t ascender = static_cast<uint8_t>(resolved.getAscender(style));
+  const uint8_t ascender =
+      static_cast<uint8_t>(scale16 == 16 ? resolved.getAscender(style) : (resolved.getAscender(style) * scale16 + 8) / 16);
 
   // Tiled-grayscale band culling: if this glyph's physical y-extent is entirely
   // outside the active strip, skip it before the expensive bitmap decode. This
@@ -413,12 +466,17 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
   if (resolved.getType() == UnifiedFontFamily::Type::FLASH) {
     const EpdFontData* fontData = resolved.getFlashData(style);
     if (fontData) {
-      bitmap = renderer.getGlyphBitmap(fontData, glyph);
+      bitmap = renderer.getGlyphBitmap(fontData, sourceGlyph);
     }
   } else {
     bitmap = resolved.getGlyphBitmap(cp, style);
   }
   if (bitmap == nullptr) return;
+  if (scale16 != 16) {
+    bitmap = shrinkGlyphBitmap(bitmap, *sourceGlyph, is2Bit, scale16, width, height);
+    if (bitmap == nullptr) return;
+    is2Bit = true;
+  }
 
   // Logical placement of glyph pixel (0, 0) and the logical step for one move
   // along each glyph axis. Rotated text runs glyph x up the screen and glyph

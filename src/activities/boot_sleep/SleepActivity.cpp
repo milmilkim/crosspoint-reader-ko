@@ -60,9 +60,10 @@ HalDisplay::GrayscaleMode sleepGrayscaleMode(const GfxRenderer& renderer) {
 }
 
 // SSD absolute images use the new thresholds; other panels retain legacy tuning.
+// my-theme: X3 too, see SleepActivity::useDirectGrayBitmap().
 bool useOriginalCoverThresholds(const GfxRenderer& renderer) {
   return renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
-         display.getController() == HalDisplay::Controller::SSD1677 &&
+         (display.getController() == HalDisplay::Controller::SSD1677 || gpio.deviceIsX3()) &&
          SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
 }
 
@@ -759,8 +760,11 @@ void SleepActivity::onEnter() {
 }
 
 bool SleepActivity::useDirectGrayBitmap() const {
+  // my-theme: X3 also draws sleep images with a true four-gray waveform (Direct), so the
+  // legacy dither table (tuned for very dark overlay grays; everything above 150 turns white)
+  // washes them out there. Same cost either way: only the threshold values differ.
   return renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
-         display.getController() == HalDisplay::Controller::SSD1677 &&
+         (display.getController() == HalDisplay::Controller::SSD1677 || gpio.deviceIsX3()) &&
          SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
 }
 

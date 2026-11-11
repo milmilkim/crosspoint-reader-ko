@@ -29,6 +29,7 @@ enum class SettingAction {
   SelectSleepScreens,
   FontSelection,        // Korean: pick the EPUB reader font from SD card
   SystemFontSelection,  // Korean: pick the UI system font from SD card
+  ReaderFallbackFontSelection,  // my-theme: SD font for glyphs the built-in reader font lacks
   // DownloadFonts omitted: the upstream .cpfont download flow is not part of this build.
   TextSettings,
   Plugins,
