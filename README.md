@@ -1,300 +1,98 @@
-# CrossPoint Reader
+# CrossPoint Reader KO — 타일 에디션
 
-[![CI (build)](https://github.com/crosspoint-reader-ko/crosspoint-reader-ko/actions/workflows/ci.yml/badge.svg)](https://github.com/crosspoint-reader-ko/crosspoint-reader-ko/actions/workflows/ci.yml) [![Compile Release](https://github.com/crosspoint-reader-ko/crosspoint-reader-ko/actions/workflows/release.yml/badge.svg)](https://github.com/crosspoint-reader-ko/crosspoint-reader-ko/actions/workflows/release.yml)
+[CrossPoint Reader KO](https://github.com/crosspoint-reader-ko/crosspoint-reader-ko)(한국어판 CrossPoint 펌웨어)에
+순정 펌웨어 느낌의 **타일 홈 화면**과 **내장 명조 글꼴**을 얹은 개인 포크입니다.
+Xteink X3에 맞춰 만들었고 X3에서만 써 봤습니다.
 
-CrossPoint is open-source e-reader firmware - community-built, fully hackable, free forever. It's maintained by a growing community of developers and readers who believe your device should do what you want - not what a manufacturer decided for you.
+> 공식 CrossPoint / CrossPoint KO 릴리스가 아닙니다. 기능 설명과 사용법은
+> [KO 원본 README](https://github.com/crosspoint-reader-ko/crosspoint-reader-ko#readme)와
+> [crosspoint.kr](https://crosspoint.kr)을 보세요.
 
-### Now running on:
+<p>
+  <img src="./docs/images/tile/home.png" width="250" alt="타일 홈 화면: 책 카드와 2x2 타일">
+  <img src="./docs/images/tile/reader-chapter.png" width="250" alt="챕터 첫 페이지: 제목, 삽화, 부크크 명조 본문">
+  <img src="./docs/images/tile/reader-text.png" width="250" alt="부크크 명조 17pt 본문 페이지">
+</p>
 
-- **ESP32C3-based** Xteink X4 and X3.
-- **ESP32S3-based** Xteink X4Pro and X4Classic, Seeed reTerminal Sticky, M5PaperMono, Metalio E-Ink 4, EEGOREAD A4 and Boox Picco.
+기기 화면 그대로입니다 (528×792, 흑백 1비트로 저장되어 실제 화면보다 거칠게 보입니다).
+본문 두 장은 기기에서 찍은 스크린샷이고, 홈 화면은 기기 스크린샷에 이 책의 표지와 제목을 합성한 것입니다.
+책은 저작권이 만료된 코난 도일 단편집 「하늘의 공포」입니다.
 
-Check [our Devices page](https://crosspointreader.com/devices) for the full list.
+## KO 원본과 다른 점
 
-![CrossPoint Reader running on Xteink device](./docs/images/cover.jpg)
+현재 기준: **CrossPoint KO 2.0.0-ko.2**
 
-> If you're planning to buy an Xteink device, consider purchasing an **X3/X4 Developer Edition** through https://crosspointreader.com. CrossPoint receives a small share of each sale, helping fund development costs.
+| | KO 원본 | 타일 에디션 |
+|---|---|---|
+| 홈 화면 | Lyra 등 목록형 테마 | **타일 테마** (기본): 책 카드 + 2×2 타일, 글자만 있는 버튼 안내 |
+| 내장 리더 글꼴 | Pretendard 10pt | **부크크 명조 17pt** (한글 2,350자 + 한자 4,620자) |
+| 특수문자 | 내장 글꼴에 없으면 SD 글꼴 필요 | 그리스 문자, 도형, ♥★, 원문자, 전각 부호, 가나 등 1,237자 내장 |
+| UI 글꼴 | Pretendard 10pt | Pretendard 11pt, 홈 제목 Bold 14pt |
+| 업데이트 확인 | KO 릴리스 | 이 포크의 릴리스 |
 
-## What can CrossPoint do?
+그 밖에:
 
-- **Reader engine**: EPUB 2/3 rendering with embedded-style option, image handling, hyphenation, kerning, adaptive table layouts, native CJK ruby annotations, chapter navigation, footnotes, bookmarks, dictionary lookups ([StarDict](docs/dictionary.md)), go-to-percent, auto page turn, orientation control, focus reading, KOReader progress sync and more.
+- **보조 글꼴** (설정 → 리더): 내장 글꼴에 없는 글자(KS X 1001 밖의 한글, 드문 한자)만 SD 글꼴에서
+  가져옵니다. 평소에는 "없음"으로 둡니다.
+- 타일 홈에서 뒤로가기는 최근 읽은 책 목록을 띄우고, 파일 전송 타일에서 OPDS/플러그인으로 갈 수 있습니다.
+- X3: 절전 화면 이미지가 4단계 회색을 고르게 쓰고, EPUB 이미지 페이지의 회색 얼룩을 줄였습니다.
+- KO 원본의 다른 테마(Classic, Lyra, RoundedRaff, 갈래목)와 기능은 그대로 들어 있습니다.
 
-- **Various formats**: native handling for `.epub`, `.xtc/.xtch`, `.txt`, and `.bmp`.
+## 설치
 
-- **Touch reading**: follow EPUB links and look up words in the dictionary on touch-enabled devices.
+CrossPoint KO가 이미 설치된 X3 기준입니다.
 
-- **Highlights and clippings**: highlight text in EPUBs and save excerpts as clippings. Use the reader menu on button devices, or hold a word and drag the selection handles on touch devices. Look up selected words or phrases in the dictionary. Enable Sync Clippings to sync saved excerpts through a compatible CrossPoint Sync server. See [Clippings and Highlights](USER_GUIDE.md#53-clippings-and-highlights).
+1. [Releases](https://github.com/milmilkim/crosspoint-reader-ko/releases/latest)에서
+   `crosspoint-<버전>-x3-x4.bin`을 받습니다.
+2. SD 카드에 복사합니다.
+3. 기기에서 설정 → 시스템 → SD 카드 펌웨어 업데이트로 고릅니다.
+4. 다른 테마가 보이면 설정 → 테마에서 **타일**을 고릅니다.
 
-- **Screenshots.**
+펌웨어는 순정 OTA 파티션(6.25 MB) 안에 들어가는 크기입니다. 원래 펌웨어로 돌아가려면 같은 방법으로
+KO 원본 릴리스를 올리면 됩니다.
 
-- **Custom fonts**: install your favorite fonts on the SD card.
-
-- **Tilt page turn (X3 and Sticky)**.
-
-- **Bluetooth page turners**: pair a remote under Settings → Connectivity → Bluetooth Page Turner. Map short and long presses to page turns, chapter navigation, the reader menu, or clipping selection.
-
-- **USB Drive mode (X4Pro)**: access the SD card as USB mass storage.
-
-- **Library workflow**: indexed title/author search, recently-added and alphabetical views, multilingual grouping, folder browser, recent books, and SD-cache management.
-
-- **Wireless workflows**:
-  
-  - File transfer web UI
-  - EPUB Optimizer
-  - Web settings UI/API (edit many device settings from browser)
-  - WebSocket fast uploads
-  - WebDAV handler
-  - AP mode (hotspot) and STA mode (join existing Wi-Fi), both with QR helpers
-  - Calibre wireless connect flow
-  - OPDS browser with saved servers (up to 8), search, pagination, and direct download
-  - OTA update checks and installs from GitHub releases
-
-- **Customization**: night mode, multiple themes (Classic, Lyra, Lyra Extended, RoundedRaff), sleep screen modes including transparent overlays, front/side button remapping, status bar controls, power-button behavior, refresh cadence, and more.
-
-- **Localization**: 34 UI languages and counting, including CJK font fallback and RTL support.
-
-- **SD card plugins**: install plugins for book catalogs, downloads, and tools in the device's web interface. Enable Plugins under Settings → Connectivity to show them on Home. On-device plugins use existing firmware screens and operations. JavaScript runs in a browser on your phone or computer, and its page must stay open while it works. Plugins follow [CrossPoint's reading-focused scope](SCOPE.md#out-of-scope). See the [plugin guide](docs/sd-plugins.md).
-
-### Coming soon:
-
-- More themes.
-
-- Much more! stay tuned.
-
----
-
-## USB-locked devices (Xteink Unlocker)
-
-Some Xteink units purchased from third-party stores (e.g. AliExpress) ship with USB flashing locked from the factory.
-If your device is locked, you will need to use the **Xteink Unlocker** tool available at
-https://crosspointreader.com/#unlock-tool before you can flash CrossPoint.
-
-**You do not need this tool if you bought your device directly from xteink.com.** Those units are not locked.
-
-**Not sure if your device is locked?** Power it on, connect the USB-C cable, and try flashing via the web flasher first (see
-[Install firmware](#install-firmware) below). If the browser's serial device picker does not show your device, try a different
-USB port or browser before assuming the device is locked. Only reach for the unlocker if the device still doesn't appear.
-
-> ### ⚠️ WARNING: READ THIS BEFORE USING THE UNLOCKER ⚠️
-> 
-> **The only officially supported firmwares in the unlock tool are CrossPoint and CrossInk.**
-> 
-> Flashing any other firmware on a USB-locked device may **permanently brick the device** or leave it **permanently
-> stuck on that firmware with no recovery path**. Once USB flashing is re-locked, your only way back is via OTA, and if
-> the firmware you flashed doesn't support OTA, **there is no way out**.
-
-## Install firmware
-
-### Web installer (recommended)
-
-1. Connect your device to your computer via USB-C and wake/unlock the device
-2. Go to https://crosspointreader.com/#flash-tools, select your device (X3, X4, Xteink X4Pro, Seeed reTerminal Sticky, or M5PaperMono), and choose an official CrossPoint release.
-
-### Web installer (specific version)
-
-1. Connect your device to your computer via USB-C and wake/unlock the device
-2. Download the firmware file for your device from [Releases](https://github.com/crosspoint-reader/crosspoint-reader/releases), or compile yourself.
-3. Go to https://crosspointreader.com/#flash-tools, select your device, click "Custom .bin" and upload the firmware file.
-
-### Revert to Official Firmware
-
-To revert to the official firmware, you can also flash the latest official firmware using https://crosspointreader.com/#flash-tools.
-
-### Command line
-
-1. Install [`esptool`](https://github.com/espressif/esptool):
-
-```bash
-pip install esptool
-```
-
-2. Download the firmware file for your device from the [releases page](https://github.com/crosspoint-reader/crosspoint-reader/releases).
-3. Connect your device via USB-C.
-4. Find the device port. On Linux, run `dmesg` after connecting. On macOS:
-
-```bash
-log stream --predicate 'subsystem == "com.apple.iokit"' --info
-```
-
-5. Flash an X3 or X4:
-
-```bash
-esptool.py --chip esp32c3 --port /dev/ttyACM0 --baud 921600 write_flash 0x10000 /path/to/firmware.bin
-```
-
-   Flash an Xteink X4Pro, Seeed reTerminal Sticky, or M5PaperMono:
-
-```bash
-esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 921600 write_flash 0x10000 /path/to/firmware.bin
-```
-
-### Manual
-
-See [Development quick start](#development-quick-start) below.
-
----
-
-## Custom SD-card fonts
-
-On devices with external RAM enabled in CrossPoint, copy `.ttf`, `.otf`, or `.ttc` files to the SD card and select them as reader fonts. Put one file in `/fonts/` or `/.fonts/`, or put one family's files in a subfolder. See the [SD card font guide](./docs/sd-card-fonts.md) for the folder layout and styles.
-
-On other devices, convert the font to `.cpfont` first. `.cpfont` files also work on devices with external RAM enabled and have better performance. No firmware reflash is needed to add fonts.
-
-To make `.cpfont` files:
-
-1. Go to https://crosspointreader.com/fonts and open the "SD-card font builder" form.
-2. Upload up to four styles (regular, bold, italic, bold-italic), set the family name, point sizes, and Unicode range.
-3. Download the generated `.cpfont` files.
-4. Copy them to your SD card under `/fonts/YourFont/` (or `/.fonts/YourFont/` to hide the folder).
-5. Select the font on the device from the font settings.
-
-Conversion runs the firmware repo's `lib/EpdFont/scripts/fontconvert_sdcard.py` script unmodified, so output matches a local host build.
-
----
-
-## Documentation
-
-- [User Guide](./USER_GUIDE.md)
-- [Web server usage](./docs/webserver.md)
-- [Web server endpoints](./docs/webserver-endpoints.md)
-- [Project scope](./SCOPE.md)
-- [Contributing docs](./docs/contributing/README.md)
-- [Touch and UI development](./docs/contributing/touch-and-ui.md) - how to build new screens on the FreeInkUI activity bases (UiListActivity and friends), plus build envs for the non-Xteink touch devices
-
----
-
-## Development quick start
-
-### Prerequisites
-
-- [pioarduino PlatformIO Core](https://github.com/pioarduino/platformio-core) or [VS Code + pioarduino IDE](https://github.com/pioarduino/pioarduino-vscode-ide)
-- Python 3.8+
-- `clang-format` 21
-- USB-C cable supporting data transfer
-
-### Setup
-
-```bash
-git clone --recursive https://github.com/crosspoint-reader/crosspoint-reader
-cd crosspoint-reader
-
-# if cloned without --recursive:
-git submodule update --init --recursive
-```
-
-### Nix/NixOS
-
-Nix/NixOS users can enter the development shell with either `nix develop` (flakes) or `nix-shell`:
-
-```bash
-nix develop -f nix
-# or
-nix-shell nix
-```
-
-To flash a connected ESP32-C3 device, enable PlatformIO's udev rules in your NixOS configuration:
-
-```nix
-services.udev.packages = with pkgs; [ platformio-core.udev ];
-```
-
-After rebuilding the system configuration, reconnect the device or reload udev rules.
-
-### Build / flash / monitor
-
-```bash
-pio run --target upload
-```
-
-### Contributor pre-PR checks
-
-```bash
-./bin/clang-format-fix
-pio check -e default
-pio run -e default
-```
-
-### Debugging
-
-After flashing the new features, it’s recommended to capture detailed logs from the serial port.
-
-First, make sure all required Python packages are installed:
-
-```python
-python3 -m pip install pyserial colorama matplotlib
-```
-
-After that run the script:
+## 직접 빌드
 
 ```sh
-# For Linux
-# This was tested on Debian and should work on most Linux systems.
-python3 scripts/debugging_monitor.py
-
-# For macOS
-python3 scripts/debugging_monitor.py /dev/cu.usbmodem2101
+git clone --recursive https://github.com/milmilkim/crosspoint-reader-ko
+cd crosspoint-reader-ko
+pio run -e gh_release        # .pio/build/gh_release/firmware.bin
 ```
 
-Minor adjustments may be required for Windows.
+PlatformIO는 pioarduino core **6.1.19**가 필요합니다 (CI와 같은 버전).
 
----
+**부크크 명조는 저장소에 들어 있지 않습니다.** 글꼴 헤더(`lib/EpdFont/builtinFonts/bookk_*.h`)는
+git에서 제외되어 있어서, 그대로 빌드하면 본문도 Pretendard로 나옵니다. 넣으려면 TTF를 직접 준비해서
+생성합니다:
 
-## Internals
-
-CrossPoint Reader is pretty aggressive about caching data down to the SD card to minimise RAM usage. The ESP32-C3 only has ~380KB of usable RAM, so we have to be careful. A lot of the decisions made in the design of the firmware were based on this constraint.
-
-### Data caching
-
-The first time chapters of a book are loaded, they are cached to the SD card. Subsequent loads are served from the
-cache. This cache directory exists at `.crosspoint` on the SD card. The structure is as follows:
-
-```text
-.crosspoint/
-├── epub_<hash>/         # one directory per book, named by content hash
-│   ├── progress.bin     # reading position (chapter, page, etc.)
-│   ├── cover.bmp        # generated cover image
-│   ├── book.bin         # metadata: title, author, spine, TOC
-│   ├── css_rules.cache  # parsed CSS rule cache
-│   ├── img_*            # rendered image cache files
-│   └── sections/        # per-chapter layout cache
-│       ├── 0.bin
-│       ├── 1.bin
-│       └── ...
-├── settings.json        # device settings
-├── state.json           # resume/runtime state
-└── recent.json          # recent books list
+```sh
+pip install -r lib/EpdFont/scripts/requirements.txt
+BOOKK_TTF=/path/to/BookkMyungjo.ttf lib/EpdFont/scripts/convert-korean-builtin-fonts.sh
 ```
 
-Removing `/.crosspoint` clears all cached metadata and forces a full regeneration on next open. Book deletes, overwrites, and moves done through the firmware or web UI clear or re-key matching caches; manual SD-card edits may leave stale cache directories behind.
+릴리스의 `.bin`은 이렇게 로컬에서 빌드한 것입니다. GitHub Actions의 릴리스 워크플로는 수동 실행 전용이고,
+부크크 명조 없이 빌드됩니다.
 
-For more details on the internal file structures, see the [file formats document](./docs/file-formats.md).
+## 브랜치
 
----
+| 브랜치 | 내용 |
+|---|---|
+| `main` | 타일 에디션. KO 원본 최신 릴리스 위에 이 포크의 변경을 올린 것 |
+| `release/korean` | KO 원본 그대로 (건드리지 않음) |
 
-## Contributing
+릴리스 태그는 `<KO 버전>-tile.<번호>` 형식입니다 (예: `2.0.0-ko.2-tile.1`).
+KO 원본이 새 버전을 내면 `main`을 그 위로 다시 올립니다(rebase). 그래서 `main`의 과거 커밋 해시는
+바뀔 수 있고, 예전 버전은 태그로 찾습니다.
 
-Contributions are welcome. If you're new to the codebase, start with the [contributing docs](./docs/contributing/README.md). For things to work on, check the [ideas discussion board](https://github.com/crosspoint-reader/crosspoint-reader/discussions/categories/ideas) — leave a comment before starting so we don't duplicate effort.
+## 글꼴과 라이선스
 
-Everyone here is a volunteer, so please be respectful and patient. For governance and community expectations, see [GOVERNANCE.md](./GOVERNANCE.md).
+- 펌웨어 코드: [MIT](LICENSE) (CrossPoint Reader, CrossPoint Reader KO와 동일)
+- **부크크 명조** © (주)부크크, 제작 산돌티움 — <https://bookk.co.kr/font>.
+  무료 글꼴이며 릴리스 펌웨어에 글자 모양 그대로 탑재했습니다. 글꼴 파일은 이 저장소에서 배포하지 않습니다.
+- 한자: KoPub 바탕 (한국출판인회의)
+- Pretendard, Noto Serif: SIL Open Font License 1.1
 
----
+## 고마운 프로젝트
 
-## Community forks
-
-One of the best things about open source is that anyone can take the code in a different direction. If you need something outside CrossPoint's [scope](./SCOPE.md), check out the community forks:
-
-- [CrossInk](https://github.com/uxjulia/CrossInk) — UX focused with minimal reading stats and broader customizations for the reading experience.
-
-- [papyrix-reader](https://github.com/bigbag/papyrix-reader) — Adds FB2 and MD format support. Actively maintained with Arabic script support. Custom themes.
-
-- [inx](https://github.com/obijuankenobiii/inx) — Completely reimagines the user interface with tabbed navigation.
-
-- [Witch(hunt) Reader](https://github.com/jpirnay/witchhunt-reader) — More faithful CSS styling and background work for slightly snappier interaction. Weather information panel. Markdown support.
-
-**Note:** Many of these features will make their way into CrossPoint over time. Each project chooses its own priorities and tradeoffs.
-
-Want to build your own device? Be sure to check out the [Silkscreen](https://silkscreenreader.com) project or [OnePage Reader](https://github.com/MoveCall/onepage-reader).
-
----
-
-CrossPoint Reader is **not affiliated with Xteink or any device manufacturer**.
+- [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) — 원본 펌웨어
+- [CrossPoint Reader KO](https://github.com/crosspoint-reader-ko/crosspoint-reader-ko) — 한국어판
